@@ -227,6 +227,46 @@ Because white dwarfs occupy a relatively distinct region of the CMD, yet form th
 * [Gaia Data Release 3, Apsis. III. Non-stellar content and source classification](https://www.aanda.org/articles/aa/full_html/2023/06/aa43423-22/aa43423-22.html), Delchambre et al., 2022; Process 56 mln of sources using SOM.
 * [Astronomaly: Personalised Active Anomaly Detection in Astronomical Data](https://arxiv.org/abs/2010.11202), Michelle Lochner, Bruce A. Bassett, 2021; combines anomaly detection with `active learning`. Tool using this approach: https://github.com/MichelleLochner/astronomaly
 
+## Pleiades from Gaia using dimensionality reduction using PCA, UMAP
+
+```sh
+python -m experiments.gaia_dimensionality --features 3
+```
+
+We have found Pleiades stars cluster again using:
+* `PCA` - projects it into a distinct region.
+* `UMAP` - places it on a separate island.
+
+On UMAP there is small, detached group in the upper-right.
+
+![umap](reports/gaia_dimensionality/3d/umap.png)
+
+![pca](reports/gaia_dimensionality/3d/pca.png)
+
+Validation and compare 3 vs 5 features:
+
+```sh
+python -m experiments.gaia_dimensionality --features 5
+python -m experiments.gaia_dimensionality --features 3
+python -m experiments.gaia_dimensionality_validate
+```
+
+Results:
+
+| Method | 3 features | 5 features | Better |
+|---|---:|---:|---|
+| PCA, published-member 10NN | **86.9%** | 79.3% | 3D |
+| UMAP, published-member 10NN | 86.4% | **89.5%** | 5D |
+| PCA, proxy 10NN | **98.0%** | 84.5% | 3D |
+| UMAP, proxy 10NN | **98.4%** | 92.8% | 3D |
+
+PCA performs better with three features.
+UMAP performs slightly better with five features against the published catalogue.
+
+Here `10NN` measures `local neighbourhood purity`.
+
+So **adding features does not necessarily improve a machine learning result. Their relevance depends on the algorithm and the objective**.
+
 ## Orion constellation - data exploration and visualisation
 
 ```sh
