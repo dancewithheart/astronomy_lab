@@ -2,7 +2,7 @@ import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
 
-from gaia import parallax_to_distance_pc
+from astrometry import parallax_to_distance_pc
 
 @given(
     st.floats(
