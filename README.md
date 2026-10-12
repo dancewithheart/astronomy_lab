@@ -1,6 +1,8 @@
 # Learning ML in Python on astronomy data
 
-## Pleiades - detect cluster using DBSCAN
+![ML algorithm decision map](ml_roadmap.svg)
+
+## Pleiades: recover a star cluster (clustering - DBSCAN, HDBSCAN)
 
 ```sh
 python -m experiments.pleiades --refresh
