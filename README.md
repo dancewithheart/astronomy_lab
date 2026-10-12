@@ -164,7 +164,7 @@ LOF tends to highlight stars that deviate from the local CMD structure, includin
 
 
 
-## verification using SIMBAD
+### verification using SIMBAD
 
 ```
 python -m experiments.gaia_anomalies
@@ -221,6 +221,11 @@ Example:
 IsolationForest considers the white dwarf extremely unusual; LOF considers it entirely ordinary.
 Why might that happen?
 Because white dwarfs occupy a relatively distinct region of the CMD, yet form their own sequence. A star can therefore be globally unusual while locally surrounded by similar stars.
+
+### Research
+
+* [Gaia Data Release 3, Apsis. III. Non-stellar content and source classification](https://www.aanda.org/articles/aa/full_html/2023/06/aa43423-22/aa43423-22.html), Delchambre et al., 2022; Process 56 mln of sources using SOM.
+* [Astronomaly: Personalised Active Anomaly Detection in Astronomical Data](https://arxiv.org/abs/2010.11202), Michelle Lochner, Bruce A. Bassett, 2021; combines anomaly detection with `active learning`. Tool using this approach: https://github.com/MichelleLochner/astronomaly
 
 ## Orion constellation - data exploration and visualisation
 
