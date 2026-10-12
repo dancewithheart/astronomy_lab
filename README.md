@@ -227,15 +227,17 @@ Because white dwarfs occupy a relatively distinct region of the CMD, yet form th
 * [Gaia Data Release 3, Apsis. III. Non-stellar content and source classification](https://www.aanda.org/articles/aa/full_html/2023/06/aa43423-22/aa43423-22.html), Delchambre et al., 2022; Process 56 mln of sources using SOM.
 * [Astronomaly: Personalised Active Anomaly Detection in Astronomical Data](https://arxiv.org/abs/2010.11202), Michelle Lochner, Bruce A. Bassett, 2021; combines anomaly detection with `active learning`. Tool using this approach: https://github.com/MichelleLochner/astronomaly
 
-## Pleiades from Gaia using dimensionality reduction using PCA, UMAP
+## Pleiades from Gaia using dimensionality reduction (PCA, UMAP)
 
 ```sh
 python -m experiments.gaia_dimensionality --features 3
 ```
 
-We have found Pleiades stars cluster again using:
-* `PCA` - projects it into a distinct region.
-* `UMAP` - places it on a separate island.
+PCA and UMAP project Gaia measurements into two dimensions:
+* `PCA` - linear projection, preserving maximum variance.
+* `UMAP` - nonlinear projection, preserving local neighbourhoods.
+
+Both reveal a distinct Pleiades population, verified against published members.
 
 On UMAP there is small, detached group in the upper-right.
 
