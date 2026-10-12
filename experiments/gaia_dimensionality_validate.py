@@ -26,7 +26,13 @@ def reference_ids() -> set[int]:
 
 
 def load_embedding(name: str, gaia: pd.DataFrame) -> pd.DataFrame:
-    path = REPORT / f"embeddings-{name}.csv"
+    path = REPORT / name / "embeddings.csv"
+    feature_file = REPORT / name / "features.json"
+    import json
+    selected = json.loads(feature_file.read_text(encoding="utf-8"))
+    expected = 3 if name == "3d" else 5
+    if len(selected) != expected:
+        raise ValueError(f"{name} embeddings used {selected}; expected {expected} features")
     emb = pd.read_csv(path, dtype={"source_id": "int64"})
     result = emb.merge(
         gaia[["source_id", "parallax", "pmra", "pmdec"]],
@@ -66,7 +72,7 @@ def plot_members(data: pd.DataFrame, mask: np.ndarray, name: str, x: str, y: str
     ax.set(xlabel=x, ylabel=y, title=f"Gaia {name}: {x[:2]} with published Pleiades members")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(REPORT / f"{name}-{x[:2].lower()}-pleiades.png", dpi=160)
+    fig.savefig(REPORT / name / f"{x[:2].lower()}-pleiades.png", dpi=160)
     plt.close(fig)
 
 
@@ -97,6 +103,14 @@ def main() -> None:
             q = member_neighbor_fraction(data, proxy, cols)
             print(f"  {tag:4s}: published-member 10NN={p:.1%}, proxy 10NN={q:.1%}")
             plot_members(data, mask, name, *cols)
+
+    # Verify the two outputs really differ, beyond just the filenames.
+    three = results["3d"][0].sort_values("source_id").reset_index(drop=True)
+    five = results["5d"][0].sort_values("source_id").reset_index(drop=True)
+    if three["source_id"].equals(five["source_id"]):
+        coords = ["PC1", "PC2", "UMAP1", "UMAP2"]
+        if np.array_equal(three[coords].to_numpy(), five[coords].to_numpy()):
+            raise ValueError("3D/5D embeddings are identical. Check file paths and --features.")
 
     # Additional clustering of the 3-feature UMAP embedding.
     data, mask = results["3d"]
