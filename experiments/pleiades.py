@@ -9,10 +9,7 @@ from sklearn.preprocessing import StandardScaler
 
 from datasets import PLEIADES, load_dataset
 
-from astroquery.vizier import Vizier
 from experiments.pleiades_reference import load_reference_pleiades
-
-REFERENCE_CATALOG = "J/A+A/677/A163/members"
 
 FEATURES = ["parallax", "pmra", "pmdec"]
 
