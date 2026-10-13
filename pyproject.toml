@@ -21,6 +21,7 @@ dependencies = [
 analysis = [
     "matplotlib>=3.9,<4",
     "scikit-learn>=1.9,<2",
+    "umap-learn>=0.5.7,<1",
 ]
 pyvista = [
     "imageio>=2.36,<3",
