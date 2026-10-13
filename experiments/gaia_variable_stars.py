@@ -210,10 +210,25 @@ def main(refresh=False):
         model.fit(X_train[columns], y_train)
         pred = model.predict(X_test[columns])
 
+        if name == "All features":
+            errors = X_test.loc[y_test != pred].copy()
+            errors["true_class"] = y_test[y_test != pred]
+            errors["predicted_class"] = pred[y_test != pred]
+
+            print("\nMisclassifications:")
+            print(errors.groupby(
+                ["true_class", "predicted_class"]
+            ).size())
+
+            errors.to_csv(
+                "reports/gaia_variable_stars/errors.csv",
+                index=True,
+            )
+
         score = f1_score(y_test, pred, average="macro")
         print(f"{name:22s} macro-F1={score:.3f}")
 
-        print(f"\nResults saved to {REPORT}")
+    print(f"\nResults saved to {REPORT}")
 
 
 if __name__ == "__main__":
