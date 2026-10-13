@@ -11,7 +11,7 @@
 * [Classify variable stars](#supervised-learning---classifying-rr-lyrae-eclipsing-binaries-long-period-variables) - classification (logistic regression, random forest, gradient boosting)
 * Classify white dwarfs
 * [Predict stellar temperature]() - regression (Linear, Random Forrest, Gradient Boosting)
-* Discover exoplanet transits - time-series, Box Least Squares
+* [Discover an exoplanet using TESS data] - time-series, Box Least Squares
 * Classify galaxy morphology - deep learning (CNN)
 * Detect astronomical transients - time-series, anomaly detection
 * [Orion constellation](https://github.com/dancewithheart/astronomy_visual#orion-constellation---data-exploration-and-visualisation) - data exploration and visualization
@@ -423,6 +423,117 @@ Observation 2: The errors are systematic.
 The bias changes direction.
 - Cooler stars: predictions tend to be too hot.
 - Hotter stars: predictions tend to be too cool.
+
+## Discover an exoplanet using TESS data
+
+Can Python detect a planet orbiting a distant star by measuring tiny, periodic decreases in its brightness?
+
+Use NASA observations and try to recover [WASP-18 b](https://exoplanetarchive.ipac.caltech.edu/overview/WASP-18) exoplanet orbital period
+without givin this period to the detection algorithm.
+
+TESS repeatedly measures the brightness of stars.
+When a planet passes between us and its star, some of the starlight is blocked.
+The brightness decreases temporarily.
+
+Algorithm - [Box Least Squares](https://docs.astropy.org/en/stable/timeseries/bls.html) (BLS)
+
+```sh
+python -m experiments.tess_transits
+```
+
+```text
+[TESS] cadences=18,299, span=27.41 days
+[TESS] scatter (robust)=0.75 ppt
+[BLS] searching for periodic transit-shaped dips...
+
+[BLS] best transit candidate
+  period_days:        0.941479
+  duration_hours:     1.92
+  depth_percent:      0.987
+  depth_snr:          491.3 (approximate)
+  constant_RMSE_ppt:  2.95
+  transit_RMSE_ppt:   0.83 (in-sample)
+
+[Validation] compared AFTER fitting
+  published_period:   0.9414524 days
+  period_error:       0.04 minutes
+```
+
+
+![folded](reports/tess_transits/folded.png)
+
+![lightcurve](reports/tess_transits/lightcurve.png)
+
+![periodogram](reports/tess_transits/periodogram.png)
+
+Using 18,299 TESS brightness measurements spanning 27.4 days,
+a Box Least Squares search recovered the known orbital period of WASP-18 b
+to within 2.3 seconds of its published value.
+The transit model reduced in-sample RMSE by approximately 45%.
+The periodogram also revealed strong harmonics of the orbital period.
+
+### Box Least Squares vs Lomb–Scargle
+
+| Algorithm | Assumed signal |
+|---|---|
+| Box Least Squares | Periodically recurring dips |
+| Lomb–Scargle | Approximately sinusoidal periodic variation |
+
+```text
+[Lomb-Scargle] best periodic signal
+period_days: 0.942123
+difference_from_BLS_minutes: 0.93
+```
+
+| Algorithm | Detected period | Error vs published |
+|---|---:|---:|
+| Box Least Squares | 0.941479 days | **2.3 seconds** |
+| Lomb–Scargle | 0.942123 days | **58 seconds** |
+
+BLS recovered the published period more accurately in this experiment.
+
+![lomb-scargle](reports/tess_transits/lomb-scargle.png)
+
+### Does signal shape determine the best algorithm?
+
+BLS versus Lomb–Scargle on two different astronomical phenomena.
+
+| Target | Physical phenomenon | Expected signal | Hypothesis |
+|---|---|---|---|
+| WASP-18 b | Planet passing in front of its star | Repeated brightness dips | BLS should fit better |
+| HD 42608 | δ Scuti pulsating star | Approximately sinusoidal oscillations | Lomb–Scargle should fit better |
+
+HD 42608 is used in [lightkurve tutorial](https://lightkurve.github.io/lightkurve/tutorials/3-science-examples/asteroseismology-oscillating-star-periodogram.html).
+
+```sh
+python -m experiments.tess_signal_shapes
+```
+
+```
+[WASP-18 (transit)] cadences=18,299, train=13,724, test=4,575
+[WASP-18 (transit)] frequency search=0.2–2.0 cycles/day
+  baseline_test_RMSE_ppt: 2.933
+  LS:  period=0.941847 d  test_RMSE=2.595 ppt
+  BLS: period=0.941581 d  test_RMSE=0.844 ppt
+  best_holdout_fit: BLS
+
+[HD 42608 (pulsation)] cadences=14,629, train=10,971, test=3,658
+[HD 42608 (pulsation)] frequency search=35.0–60.0 cycles/day
+  baseline_test_RMSE_ppt: 1.825
+  LS:  period=0.018596 d  test_RMSE=1.470 ppt
+  BLS: period=0.018596 d  test_RMSE=1.564 ppt
+  best_holdout_fit: LS
+
+[Summary: held-out RMSE; lower is better]
+              target  baseline_test_rmse_ppt  ls_test_rmse_ppt  bls_test_rmse_ppt
+   WASP-18 (transit)                   2.933             2.595              0.844
+HD 42608 (pulsation)                   1.825             1.470              1.564
+```
+
+The results support our hypothesis: an algorithm performs better when its assumptions match the physical phenomenon.
+
+### Related research
+* [ALeRCE light curve classifier: Tidal disruption event expansion pack](https://www.aanda.org/articles/aa/full_html/2025/04/aa51951-24/aa51951-24.html) - Pavez-Herrera et all - 2024
 
 ## Orion constellation - data exploration and visualisation
 
