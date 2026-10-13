@@ -269,6 +269,65 @@ Here `10NN` measures `local neighbourhood purity`.
 
 So **adding features does not necessarily improve a machine learning result. Their relevance depends on the algorithm and the objective**.
 
+## Supervised learning - classifying RR Lyrae, eclipsing binaries, long-period variables
+
+We will train model to detect following classes of variable stars:
+
+| Code | Meaning | Why brightness changes |
+|---|---|---|
+| **RR** | RR Lyrae | The star periodically expands and contracts. |
+| **ECL** | Eclipsing binary | Two stars orbit each other, periodically blocking their light. |
+| **LPV** | Long-period variable | Usually evolved giant stars that pulsate over long periods. |
+
+Codes and descriptions can be retried using AQL:
+```sql
+SELECT class_name, class_description
+FROM gaiadr3.vari_classifier_class_definition
+ORDER BY class_name
+```
+
+We use `supervised learning` we provide the correct labels during training. The algorithm learns to predict those labels for stars it hasn't seen before.
+
+| Model | Macro-F1 | Interpretation |
+|---|---:|---|
+| Logistic Regression | 0.908 | Linear decision boundaries already work well |
+| Random Forest | 0.955 | Nonlinear relationships improve classification |
+| Gradient Boosting | **0.961** | Slightly better than Random Forest |
+
+`Train/test split` - we provide the correct labels during training. The algorithm learns to predict those labels for stars it hasn't seen before.
+
+`Confusion matrix`
+Instead of simply asking whether the model is correct, we'll inspect which astronomical populations it confuses.
+
+`RR Lyrae` (RR): 93% correctly classified.  
+`Eclipsing binaries` (ECL): 98% correctly classified.  
+`Long-period variables` (LPV): 96% correctly classified.  
+
+![Confusion matrix](reports/gaia_variable_stars/confusion-matrix.png)
+
+`Feature importance`: Does the model primarily use colour and brightness, or the measurements describing how brightness changes over time?
+
+| Feature | Importance | Physical interpretation |
+|---|---:|---|
+| `skewness_mag_g_fov` | 0.256 | Asymmetry of brightness measurements |
+| `bp_rp` | 0.190 | Stellar colour |
+| `abbe_mag_g_fov` | 0.112 | Relationship between consecutive brightness measurements |
+| `std_dev_mag_g_fov` | 0.037 | Amount of brightness variation |
+| `phot_g_mean_mag` | 0.033 | Apparent brightness |
+| `range_mag_g_fov` | 0.004 | Brightness range |
+
+The most important measurement is not brightness itself, but the asymmetry of its distribution.
+
+![Feature importance](reports/gaia_variable_stars/feature-importance.png)
+
+`feature ablation` measure how inptu variables contribute to predictive performance:
+
+| Features | Macro-F1 |
+|---|---:|
+| Colour + brightness | 0.784 |
+| Variability only | 0.916 |
+| All six features | **0.955** |
+
 ## Orion constellation - data exploration and visualisation
 
 ```sh
