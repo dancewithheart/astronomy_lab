@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from astropy.timeseries import BoxLeastSquares
+from astropy.timeseries import LombScargle
 
 DATA_DIR = Path("data")
 REPORT_DIR = Path("reports/tess_transits")
@@ -160,6 +161,46 @@ def main(refresh=False):
         "published_period_days": KNOWN_PERIOD_DAYS,
         "period_error_minutes": error_minutes,
     }]).to_csv(REPORT_DIR / "summary.csv", index=False)
+
+
+    # Compare transit detection against sinusoidal periodicity detection.
+    frequency = np.linspace(1 / 5, 1 / 0.5, 20_000)
+
+    ls = LombScargle(t, flux)
+    ls_power = ls.power(frequency)
+
+    best = np.argmax(ls_power)
+    ls_period = 1 / frequency[best]
+
+    print("\n[Lomb-Scargle] best periodic signal")
+    print(f"  period_days: {ls_period:.6f}")
+    print(f"  difference_from_BLS_minutes: {abs(ls_period - period) * 1440:.2f}")
+
+    # Plot the second algorithm's periodogram.
+    trial_periods = 1 / frequency
+    order = np.argsort(trial_periods)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    ax.plot(trial_periods[order], ls_power[order])
+    ax.axvline(
+        period,
+        color="tab:orange",
+        linestyle="--",
+        label="BLS detected period",
+    )
+
+    ax.set(
+        xlabel="Trial period [days]",
+        ylabel="Lomb-Scargle power",
+        title="WASP-18: sinusoidal periodicity search",
+    )
+
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(REPORT_DIR / "lomb-scargle.png", dpi=160)
+    plt.close(fig)
+
     print(f"\nSaved CSVs and 3 plots to {REPORT_DIR}/")
 
 
