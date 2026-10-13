@@ -211,6 +211,37 @@ def main(refresh=False, radius=3.0):
         index=False,
         )
 
+    # errors analysis
+
+    df = pd.read_csv("reports/gaia_stellar_temperature/predictions.csv")
+
+    df["error"] = df["predicted"] - df["teff_gspspec"]
+    df["abs_error"] = df["error"].abs()
+
+    bins = [0, 4000, 4500, 5000, 5500, 6000, 6500, 7000, np.inf]
+    df["band"] = pd.cut(df["teff_gspspec"], bins)
+
+    print("\nErrors by temperature:")
+    print(df.groupby("band", observed=True)["error"].agg(
+        count="size",
+        bias="mean",
+        mae=lambda x: x.abs().mean(),
+    ).round(1))
+
+    print("\n10 worst predictions:")
+    print(df.nlargest(10, "abs_error")[
+              ["source_id", "bp_rp", "teff_gspspec", "predicted", "error"]
+          ].to_string(index=False))
+
+    # save test predictions
+    out = Path("reports/gaia_stellar_temperature")
+    out.mkdir(parents=True, exist_ok=True)
+
+    df[["source_id", "teff_gspspec", "predicted"]].to_csv(
+        out / "test_predictions.csv",
+        index=False,
+        )
+
     print(f"\nResults saved to {REPORT_DIR}")
 
 
