@@ -296,6 +296,97 @@ def architecture_study(per_class=1200, epochs=25):
     print(f"Saved to {out}/ (test set untouched)", flush=True)
 
 
+def final_test(per_class=1200):
+    """Evaluate the validation-selected astroNN configuration exactly once.
+
+    No checkpoint was saved by the original architecture study, so reproduce
+    its selected epoch using the same seed, split and training configuration.
+    """
+    out = Path("reports/galaxy_morphology_architecture")
+    scores_path = out / "validation.csv"
+    if not scores_path.exists():
+        raise FileNotFoundError(f"Run --architecture-study first: {scores_path} missing")
+    if (out / "test_metrics.csv").exists():
+        raise FileExistsError(
+            f"{out / 'test_metrics.csv'} already exists; do not repeatedly tune on test data"
+        )
+
+    winner = pd.read_csv(scores_path).sort_values(
+        "best_val_macro_F1", ascending=False
+    ).iloc[0]
+    if winner["config"] != "astroNN-layout":
+        raise ValueError(f"Expected selected astroNN-layout, got {winner['config']}")
+    selected_epoch = int(winner["best_epoch"])
+    seed = int(winner["seed"])
+    expected_f1 = float(winner["best_val_macro_F1"])
+    print(f"[Frozen selection] astroNN, seed={seed}, "
+          f"best_epoch={selected_epoch}, val_macro_F1={expected_f1:.4f}")
+    print("Previous study saved no checkpoint; retraining to selected epoch.")
+
+    source_ids, images, y = load_balanced(DATA, per_class)
+    ids = np.arange(len(y))
+    trainval, test = train_test_split(
+        ids, test_size=0.20, stratify=y, random_state=SEED,
+    )
+    train, valid = train_test_split(
+        trainval, test_size=0.20, stratify=y[trainval], random_state=SEED,
+    )
+    print(f"Galaxy10: train={len(train)}, validation={len(valid)}, test={len(test)}")
+    x = torch.from_numpy(images.copy()).permute(0, 3, 1, 2)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        torch.set_num_threads(min(4, torch.get_num_threads()))
+
+    result, _, weights = run_one(
+        "astroNN-layout", bool(winner["augment"]),
+        float(winner["lr"]), float(winner["weight_decay"]),
+        x, y, train, valid, device, epochs=selected_epoch,
+        patience=selected_epoch + 1, seed=seed, model_factory=AstroNNCNN,
+    )
+    print(f"[Reproduced validation] best_epoch={result['best_epoch']}, "
+          f"macro_F1={result['best_val_macro_F1']:.4f}")
+    if (result["best_epoch"] != selected_epoch or
+            abs(result["best_val_macro_F1"] - expected_f1) > 0.01):
+        raise RuntimeError(
+            "Retraining did not reproduce the selected epoch/validation score. "
+            "Do not evaluate test yet; inspect environment and random seeds."
+        )
+
+    model = AstroNNCNN().to(device)
+    model.load_state_dict(weights)  # best validation epoch, NOT last epoch 25
+    test_loader = DataLoader(
+        TensorDataset(x[test], torch.from_numpy(y[test])), batch_size=64,
+    )
+    probs = predict(model, test_loader, device)
+    pred = probs.argmax(axis=1)
+    metrics = {
+        "selected_config": "astroNN-layout",
+        "selected_epoch": selected_epoch,
+        "test_accuracy": accuracy_score(y[test], pred),
+        "test_macro_F1": f1_score(y[test], pred, average="macro", zero_division=0),
+    }
+    for cls, name in enumerate(NAMES):
+        mask = y[test] == cls
+        metrics[f"recall_{name.lower().replace('-', '_')}"] = (pred[mask] == cls).mean()
+
+    # Write artifacts only AFTER the reproduction check and the single evaluation.
+    torch.save({"state_dict": weights, "seed": seed,
+                "epoch": selected_epoch, "validation_macro_f1": expected_f1},
+               out / "astronn_best.pt")
+    pd.DataFrame([metrics]).to_csv(out / "test_metrics.csv", index=False)
+    pd.DataFrame({
+        "source_index": source_ids[test], "true": y[test],
+        "predicted": pred, "confidence": probs.max(axis=1),
+    }).to_csv(out / "test_predictions.csv", index=False)
+    save_plots(images[test], y[test], pred, out)
+
+    print(f"\n[Final test — previously inspected test split, n={len(test)}]")
+    for key, value in metrics.items():
+        printed = value if isinstance(value, str) or key == "selected_epoch" else f"{value:.4f}"
+        print(f"  {key}: {printed}")
+    print(f"Saved checkpoint, test metrics, predictions and plots to {out}/")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--per-class", type=int, default=1200)
@@ -306,9 +397,13 @@ if __name__ == "__main__":
                        help="Compare plain/augmented for every seed; validation only")
     modes.add_argument("--architecture-study", action="store_true",
                        help="Compare SmallCNN with astroNN layout; one seed, validation only")
+    modes.add_argument("--final-test", action="store_true",
+                       help="Retrain selected astroNN epoch and evaluate test once")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     args = parser.parse_args()
-    if args.architecture_study:
+    if args.final_test:
+        final_test(args.per_class)
+    elif args.architecture_study:
         architecture_study(args.per_class, args.epochs)
     elif args.seed_study:
         seed_study(args.per_class, args.epochs, args.seeds)
