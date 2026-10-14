@@ -23,6 +23,9 @@ analysis = [
     "scikit-learn>=1.9,<2",
     "umap-learn>=0.5.7,<1",
 ]
+tess = [
+    "lightkurve>=2.6,<3",
+]
 pyvista = [
     "imageio>=2.36,<3",
     "imageio-ffmpeg>=0.5,<1",
