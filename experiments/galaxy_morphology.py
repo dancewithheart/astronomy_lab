@@ -54,6 +54,41 @@ def colour_features(images):
     pixels = images.astype(np.float32) / 255
     return np.column_stack([pixels.mean(axis=(1, 2)), pixels.std(axis=(1, 2))])
 
+class AstroNNCNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.layers = nn.Sequential(
+            nn.Conv2d(3, 8, 3, padding=1),
+            nn.ReLU(),
+
+            nn.Conv2d(8, 16, 3, padding=1),
+            nn.ReLU(),
+
+            nn.MaxPool2d(4),
+            nn.Flatten(),
+            nn.Dropout(0.1),
+
+            nn.Linear(16 * 17 * 17, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+
+            nn.Linear(256, 128),
+            nn.ReLU(),
+
+            nn.Linear(128, 3),
+        )
+
+        for module in self.modules():
+            if isinstance(module, (nn.Conv2d, nn.Linear)):
+                nn.init.kaiming_normal_(
+                    module.weight, nonlinearity="relu"
+                )
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+    def forward(self, x):
+        return self.layers(x)
 
 class SmallCNN(nn.Module):
     def __init__(self):
@@ -71,6 +106,36 @@ class SmallCNN(nn.Module):
         return self.layers(x)
 
 
+
+class AstroNNCNN(nn.Module):
+    """PyTorch adaptation of astroNN Galaxy10CNN/Cifar10CNN layer layout.
+
+    Source: henrysky/astroNN, src/astroNN/models/misc_models.py.
+    Changed: 3 outputs (instead of 10). Uses the existing PyTorch trainer,
+    not astroNN's original optimizer schedule or Dense MaxNorm constraint.
+    Expects 69x69 images, as in Galaxy10 SDSS.
+    """
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv2d(3, 8, kernel_size=3, padding=1), nn.ReLU(),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(4),
+            nn.Flatten(), nn.Dropout(0.1),
+            nn.Linear(16 * 17 * 17, 256), nn.ReLU(), nn.Dropout(0.1),
+            nn.Linear(256, 128), nn.ReLU(),
+            nn.Linear(128, len(NAMES)),
+        )
+        for module in self.modules():
+            if isinstance(module, (nn.Conv2d, nn.Linear)):
+                nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+    def forward(self, x):
+        return self.layers(x)
+
+
 def predict(model, loader, device):
     model.eval()
     result = []
@@ -81,7 +146,7 @@ def predict(model, loader, device):
     return np.concatenate(result)
 
 
-def save_examples(images, labels):
+def save_examples(images, labels, out_dir=OUT):
     fig, axes = plt.subplots(3, 4, figsize=(8, 6))
     for cls, row in enumerate(axes):
         for ax, i in zip(row, np.flatnonzero(labels == cls)[:4]):
@@ -89,18 +154,18 @@ def save_examples(images, labels):
             ax.set_title(NAMES[cls], fontsize=10)
             ax.axis("off")
     fig.tight_layout()
-    fig.savefig(OUT / "examples.png", dpi=160)
+    fig.savefig(out_dir / "examples.png", dpi=160)
     plt.close(fig)
 
 
-def save_plots(images, truth, predicted):
+def save_plots(images, truth, predicted, out_dir=OUT):
     ConfusionMatrixDisplay.from_predictions(
         truth, predicted, display_labels=NAMES, normalize="true",
         values_format=".2f", cmap="Blues",
     )
     plt.title("CNN: held-out confusion matrix (row-normalized)")
     plt.tight_layout()
-    plt.savefig(OUT / "confusion.png", dpi=160)
+    plt.savefig(out_dir / "confusion.png", dpi=160)
     plt.close()
 
     wrong = np.flatnonzero(truth != predicted)[:9]
@@ -115,19 +180,20 @@ def save_plots(images, truth, predicted):
             ax.set_xticks([])
             ax.set_yticks([])
         fig.tight_layout()
-        fig.savefig(OUT / "mistakes.png", dpi=160)
+        fig.savefig(out_dir / "mistakes.png", dpi=160)
         plt.close(fig)
 
 
-def main(per_class=1200, epochs=6):
+def main(per_class=1200, epochs=6, augment=False):
     np.random.seed(SEED)
     torch.manual_seed(SEED)
-    OUT.mkdir(parents=True, exist_ok=True)
+    out_dir = OUT.with_name("galaxy_morphology_augmented") if augment else OUT
+    out_dir.mkdir(parents=True, exist_ok=True)
     if not DATA.exists():
         raise FileNotFoundError(f"Download Galaxy10 SDSS to {DATA} first")
 
     source_ids, images, y = load_balanced(DATA, per_class)
-    save_examples(images, y)
+    save_examples(images, y, out_dir)
     indices = np.arange(len(y))
     trainval, test = train_test_split(indices, test_size=0.20, stratify=y, random_state=SEED)
     train, valid = train_test_split(
@@ -135,6 +201,7 @@ def main(per_class=1200, epochs=6):
     )
     print(f"Galaxy10: {len(y):,} selected ({per_class} per class)")
     print(f"train={len(train):,}, validation={len(valid):,}, test={len(test):,}")
+    print(f"Rotation/flip augmentation: {augment}")
 
     features = colour_features(images)
     baseline = make_pipeline(StandardScaler(), LogisticRegression(max_iter=500))
@@ -166,6 +233,8 @@ def main(per_class=1200, epochs=6):
         total_loss = 0.0
         for batch, target in train_loader:
             batch = batch.to(device).float() / 255
+            if augment:
+                batch = augment_batch(batch)
             target = target.to(device)
             optimizer.zero_grad()
             loss = loss_fn(model(batch), target)
@@ -195,13 +264,13 @@ def main(per_class=1200, epochs=6):
         mask = y[test] == k
         print(f"{name:10s} {np.mean(cnn_pred[mask] == k):.3f}  n={mask.sum()}")
 
-    scores.to_csv(OUT / "metrics.csv", index=False)
+    scores.to_csv(out_dir / "metrics.csv", index=False)
     pd.DataFrame({
         "source_index": source_ids[test], "true": y[test], "predicted": cnn_pred,
         "confidence": probabilities.max(axis=1),
-    }).to_csv(OUT / "test_predictions.csv", index=False)
-    save_plots(images[test], y[test], cnn_pred)
-    print(f"Saved metrics and plots to {OUT}/")
+    }).to_csv(out_dir / "test_predictions.csv", index=False)
+    save_plots(images[test], y[test], cnn_pred, out_dir)
+    print(f"Saved metrics and plots to {out_dir}/")
 
 def augment_batch(x: torch.Tensor) -> torch.Tensor:
     """Random rotations and flips, independently for each image."""
@@ -223,5 +292,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--per-class", type=int, default=1200)
     parser.add_argument("--epochs", type=int, default=6)
+    parser.add_argument("--augment", action="store_true",
+                        help="Apply random rotations and flips to training images")
     args = parser.parse_args()
-    main(per_class=args.per_class, epochs=args.epochs)
+    main(per_class=args.per_class, epochs=args.epochs, augment=args.augment)

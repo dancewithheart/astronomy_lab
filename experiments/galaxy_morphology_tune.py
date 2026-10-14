@@ -9,6 +9,7 @@ so the resulting test score is exploratory, not a fresh independent holdout.
 import argparse
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -18,7 +19,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from experiments.galaxy_morphology import (
-    DATA, NAMES, SEED, SmallCNN, augment_batch, load_balanced, predict, save_plots,
+    DATA, NAMES, SEED, SmallCNN, AstroNNCNN, augment_batch, load_balanced, predict, save_plots,
 )
 
 OUT = Path("reports/galaxy_morphology_tuning")
@@ -32,11 +33,11 @@ CONFIGS = [
 
 
 def run_one(name, augmented, lr, weight_decay, x, y, train, valid,
-            device, epochs, patience):
-    # Identical weight initialization and minibatch order for fair comparisons.
-    torch.manual_seed(SEED)
-    np.random.seed(SEED)
-    generator = torch.Generator().manual_seed(SEED)
+            device, epochs, patience, seed=SEED, model_factory=SmallCNN):
+    # Same initialization and minibatch order for paired configurations.
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    generator = torch.Generator().manual_seed(seed)
     train_loader = DataLoader(
         TensorDataset(x[train], torch.from_numpy(y[train])),
         batch_size=64, shuffle=True, generator=generator,
@@ -45,7 +46,7 @@ def run_one(name, augmented, lr, weight_decay, x, y, train, valid,
         TensorDataset(x[valid], torch.from_numpy(y[valid])), batch_size=64,
     )
 
-    model = SmallCNN().to(device)
+    model = model_factory().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.CrossEntropyLoss()
     best_f1, best_epoch, best_weights = -1.0, 0, None
@@ -67,7 +68,7 @@ def run_one(name, augmented, lr, weight_decay, x, y, train, valid,
 
         predicted = predict(model, valid_loader, device).argmax(axis=1)
         val_f1 = f1_score(y[valid], predicted, average="macro", zero_division=0)
-        row = {"config": name, "epoch": epoch,
+        row = {"seed": seed, "config": name, "epoch": epoch,
                "train_loss": total_loss / len(train), "val_macro_F1": val_f1}
         history.append(row)
         print(f"  epoch={epoch:2d} train_loss={row['train_loss']:.4f} "
@@ -81,7 +82,7 @@ def run_one(name, augmented, lr, weight_decay, x, y, train, valid,
             print(f"  early stopping: no improvement for {patience} epochs")
             break
 
-    summary = {"config": name, "augment": augmented, "lr": lr,
+    summary = {"seed": seed, "config": name, "augment": augmented, "lr": lr,
                "weight_decay": weight_decay, "best_epoch": best_epoch,
                "best_val_macro_F1": best_f1}
     return summary, history, best_weights
@@ -155,10 +156,161 @@ def main(per_class=1200, epochs=16, patience=6):
     print(f"Saved to {OUT}/")
 
 
+def seed_study(per_class=1200, epochs=30, seeds=(42, 43, 44)):
+    """Paired comparison across random seeds; does not inspect test labels/results."""
+    if not DATA.exists():
+        raise FileNotFoundError(f"Missing {DATA}: download Galaxy10.h5 first")
+    if epochs < 1 or len(set(seeds)) != len(seeds):
+        raise ValueError("Epochs must be positive and seeds must be unique")
+
+    out = Path("reports/galaxy_morphology_seed_study")
+    out.mkdir(parents=True, exist_ok=True)
+    _, images, y = load_balanced(DATA, per_class)
+    ids = np.arange(len(y))
+    trainval, test = train_test_split(
+        ids, test_size=0.20, stratify=y, random_state=SEED,
+    )
+    train, valid = train_test_split(
+        trainval, test_size=0.20, stratify=y[trainval], random_state=SEED,
+    )
+    print(f"Galaxy10: train={len(train)}, validation={len(valid)}, "
+          f"test={len(test)} (not evaluated)", flush=True)
+    print(f"Seeds: {list(seeds)}; epochs: {epochs}; "
+          "no early stopping; validation only", flush=True)
+
+    x = torch.from_numpy(images.copy()).permute(0, 3, 1, 2)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        torch.set_num_threads(min(4, torch.get_num_threads()))
+    print(f"Device: {device}", flush=True)
+
+    summaries, histories = [], []
+    for seed in seeds:
+        for name, augment in (("plain", False), ("augmented", True)):
+            print(f"\n[seed={seed} / {name}]", flush=True)
+            result, history, _ = run_one(
+                name, augment, 1e-3, 0.0, x, y, train, valid,
+                device, epochs, patience=epochs + 1, seed=seed,
+            )
+            result["last_val_macro_F1"] = history[-1]["val_macro_F1"]
+            summaries.append(result)
+            histories.extend(history)
+
+    runs = pd.DataFrame(summaries)
+    curves = pd.DataFrame(histories)
+    runs.to_csv(out / "runs.csv", index=False)
+    curves.to_csv(out / "history.csv", index=False)
+
+    paired = runs.pivot(index="seed", columns="config", values="best_val_macro_F1")
+    paired["aug_minus_plain"] = paired["augmented"] - paired["plain"]
+    paired.to_csv(out / "paired_by_seed.csv")
+
+    summary = (runs.groupby("config")["best_val_macro_F1"]
+               .agg(["mean", "std", "min", "max"]).round(4))
+    summary.to_csv(out / "summary.csv")
+    print("\n[Best validation macro-F1 by seed]")
+    print(paired.round(4).to_string())
+    print("\n[Across-seed summary; validation only]")
+    print(summary.to_string())
+    print(f"\nMean paired difference (augmented - plain): "
+          f"{paired['aug_minus_plain'].mean():+.4f}")
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for name in ("plain", "augmented"):
+        group = curves[curves["config"] == name]
+        by_epoch = group.groupby("epoch")["val_macro_F1"]
+        centre = by_epoch.mean()
+        low, high = by_epoch.min(), by_epoch.max()
+        line, = ax.plot(centre.index, centre.values, label=name)
+        ax.fill_between(centre.index, low.values, high.values,
+                        color=line.get_color(), alpha=0.15)
+    ax.set(xlabel="Epoch", ylabel="Validation macro-F1",
+           title="Galaxy10: mean across seeds (band = min–max)")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out / "validation_curves.png", dpi=160)
+    plt.close(fig)
+    print(f"Saved to {out}/ (test set untouched)", flush=True)
+
+
+
+def architecture_study(per_class=1200, epochs=25):
+    """Compare two architectures; one seed, same augmentation and split.
+
+    Validation only: intentionally does not evaluate the previously reused test set.
+    """
+    if epochs < 1:
+        raise ValueError("epochs must be positive")
+    if not DATA.exists():
+        raise FileNotFoundError(f"Missing {DATA}: download Galaxy10.h5 first")
+
+    out = Path("reports/galaxy_morphology_architecture")
+    out.mkdir(parents=True, exist_ok=True)
+    _, images, y = load_balanced(DATA, per_class)
+    ids = np.arange(len(y))
+    trainval, test = train_test_split(ids, test_size=0.20,
+                                      stratify=y, random_state=SEED)
+    train, valid = train_test_split(trainval, test_size=0.20,
+                                    stratify=y[trainval], random_state=SEED)
+    print(f"Galaxy10: train={len(train)}, validation={len(valid)}, "
+          f"test={len(test)} (not evaluated)")
+    print(f"Single seed={SEED}; augmented=True; epochs={epochs}; "
+          "lr=0.001; weight_decay=0; no early stopping")
+
+    x = torch.from_numpy(images.copy()).permute(0, 3, 1, 2)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        torch.set_num_threads(min(4, torch.get_num_threads()))
+    print(f"Device: {device}")
+
+    summaries, histories = [], []
+    for name, factory in (("SmallCNN", SmallCNN), ("astroNN-layout", AstroNNCNN)):
+        params = sum(p.numel() for p in factory().parameters())
+        print(f"\n[{name}] parameters={params:,}", flush=True)
+        result, history, _ = run_one(
+            name, True, 1e-3, 0.0, x, y, train, valid,
+            device, epochs, patience=epochs + 1, seed=SEED,
+            model_factory=factory,
+        )
+        result["parameters"] = params
+        summaries.append(result)
+        histories.extend(history)
+
+    scores = pd.DataFrame(summaries).sort_values("best_val_macro_F1", ascending=False)
+    history = pd.DataFrame(histories)
+    scores.to_csv(out / "validation.csv", index=False)
+    history.to_csv(out / "history.csv", index=False)
+    print("\n[Architecture comparison — validation only]")
+    print(scores[["config", "parameters", "best_epoch", "best_val_macro_F1"]]
+          .to_string(index=False, float_format=lambda z: f"{z:.4f}"))
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for name, group in history.groupby("config", sort=False):
+        ax.plot(group["epoch"], group["val_macro_F1"], label=name)
+    ax.set(xlabel="Epoch", ylabel="Validation macro-F1",
+           title="Galaxy10: architecture comparison (same split, one seed)")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out / "validation_curves.png", dpi=160)
+    plt.close(fig)
+    print(f"Saved to {out}/ (test set untouched)", flush=True)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--per-class", type=int, default=1200)
     parser.add_argument("--epochs", type=int, default=16)
     parser.add_argument("--patience", type=int, default=6)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--seed-study", action="store_true",
+                       help="Compare plain/augmented for every seed; validation only")
+    modes.add_argument("--architecture-study", action="store_true",
+                       help="Compare SmallCNN with astroNN layout; one seed, validation only")
+    parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])
     args = parser.parse_args()
-    main(args.per_class, args.epochs, args.patience)
+    if args.architecture_study:
+        architecture_study(args.per_class, args.epochs)
+    elif args.seed_study:
+        seed_study(args.per_class, args.epochs, args.seeds)
+    else:
+        main(args.per_class, args.epochs, args.patience)
