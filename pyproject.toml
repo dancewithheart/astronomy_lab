@@ -26,6 +26,10 @@ analysis = [
 tess = [
     "lightkurve>=2.6,<3",
 ]
+deep-learning = [
+    "torch>=2.5,<3",
+    "h5py>=3.12,<4",
+]
 pyvista = [
     "imageio>=2.36,<3",
     "imageio-ffmpeg>=0.5,<1",

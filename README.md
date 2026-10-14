@@ -5,14 +5,14 @@
 * [Recover the Pleiades](#pleiades-recover-a-star-cluster-clustering---dbscan-hdbscan) - clustering (DBSCAN, HDBSCAN)
   * [Parameters tuning for DBSCAN](#pleiades---parameters-tuning-for-dbscan)
   * [Compare ML models HDBSCAN vs DBSCAN](#compare-ml-models-hdbscan-vs-dbscan)
-* [Find unusual Gaia stars](#pleiades-recover-a-star-cluster) - anomaly detection (IsolationForrest, LOF)
+* [Find unusual Gaia stars](#pleiades-recover-a-star-cluster) - anomaly detection (IsolationForest, LOF)
   * [Verification using SIMBAD](#verification-using-simbad) 
 * [Visualize stellar populations](#pleiades-from-gaia-using-dimensionality-reduction-pca-umap) - dimensionality reduction (PCA, UMAP)
 * [Classify variable stars](#supervised-learning---classifying-rr-lyrae-eclipsing-binaries-long-period-variables) - classification (logistic regression, random forest, gradient boosting)
 * Classify white dwarfs
-* [Predict stellar temperature](#predicting-stellar-temperature-with-regression) - regression (Linear, Random Forrest, Gradient Boosting)
-* [Discover an exoplanet using TESS data](#discover-an-exoplanet-using-tess-data) - time-series, Box Least Squares
-* Classify galaxy morphology - deep learning (CNN)
+* [Predict stellar temperature](#predicting-stellar-temperature-with-regression) - regression (Linear, Random Forest, Gradient Boosting)
+* [Discover an exoplanet using TESS data](#discover-an-exoplanet-using-tess-data) - time-series, astronomy statistical algorithms (Box Least Squares, Lomb–Scargle)
+* [Classify galaxy morphology](#classify-galaxy-morphology) - deep learning (CNN)
 * Detect astronomical transients - time-series, anomaly detection
 * [Orion constellation](https://github.com/dancewithheart/astronomy_visual#orion-constellation---data-exploration-and-visualisation) - data exploration and visualization
 * Learning extraction from AI driven experiments
@@ -477,7 +477,7 @@ The periodogram also revealed strong harmonics of the orbital period.
 | Algorithm | Assumed signal |
 |---|---|
 | Box Least Squares | Periodically recurring dips |
-| Lomb–Scargle | Approximately sinusoidal periodic variation |
+| [Lomb–Scargle](https://docs.astropy.org/en/stable/timeseries/lombscargle.html) | Approximately sinusoidal periodic variation |
 
 ```text
 [Lomb-Scargle] best periodic signal
@@ -534,6 +534,92 @@ The results support our hypothesis: an algorithm performs better when its assump
 
 ### Related research
 * [ALeRCE light curve classifier: Tidal disruption event expansion pack](https://www.aanda.org/articles/aa/full_html/2025/04/aa51951-24/aa51951-24.html) - Pavez-Herrera et all - 2024
+
+## Classify galaxy morphology
+
+Can a `convolutional neural network` (CNNs) learn to distinguish galaxy shapes directly from telescope images?
+
+Plan
+Download real galaxy images with published labels.
+Train a simple baseline that ignores the images.
+Train a small CNN that learns visual features.
+Evaluate on galaxies the network never saw during training.
+Inspect misclassified galaxies.
+
+Dataset [Galaxy10 SDSS](https://astronn.readthedocs.io/en/latest/galaxy10sdss.html) where SDSS means `Sloan Digital Sky Survey`.
+
+Tool: 
+
+```sh
+curl -L --fail --progress-bar \
+  https://zenodo.org/records/10844811/files/Galaxy10.h5 \
+  -o data/Galaxy10.h5
+```
+
+### CNN parameters tuning
+
+```sh
+python -u -m experiments.galaxy_morphology_tune
+```
+
+```
+[Validation leaderboard — used to select model]
+         config  augment    lr weight_decay  best_epoch best_val_macro_F1
+          plain    False 1e-03        0e+00          16             0.864
+      augmented     True 1e-03        0e+00          16             0.863
+augmented_decay     True 1e-03        1e-04          16             0.850
+ augmented_slow     True 3e-04        0e+00          15             0.826
+```
+
+![CNN confusion](reports/galaxy_morphology/confusion.png)
+
+Using augmented approach - with flips and rotations
+
+```sh
+python -u -m experiments.galaxy_morphology_tune \
+    --seed-study \
+    --epochs 30
+```
+
+```
+[Best validation macro-F1 by seed]
+config  augmented   plain  aug_minus_plain
+seed                                      
+42         0.8733  0.8719           0.0014
+43         0.8736  0.8679           0.0057
+44         0.8596  0.8471           0.0125
+
+[Across-seed summary; validation only]
+             mean     std     min     max
+config                                   
+augmented  0.8688  0.0080  0.8596  0.8736
+plain      0.8623  0.0133  0.8471  0.8719
+
+Mean paired difference (augmented - plain): +0.0065
+```
+
+![augmented](reports/galaxy_morphology_seed_study/validation_curves.png)
+
+
+Compared to architecture from astroNN:
+
+```sh
+python -u -m experiments.galaxy_morphology_tune \
+    --architecture-study \
+    --epochs 25
+```
+
+```
+[Architecture comparison — validation only]
+        config  parameters  best_epoch  best_val_macro_F1
+astroNN-layout     1218675          19             0.9236
+      SmallCNN       89379          24             0.8703
+```
+
+![augmented](reports/galaxy_morphology_architecture/validation_curves.png)
+
+
+The astroNN architecture significantly outperformed our SmallCNN on the validation set.
 
 ## Orion constellation - data exploration and visualisation
 
