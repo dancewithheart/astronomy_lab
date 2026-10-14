@@ -5,12 +5,12 @@
 * [Recover the Pleiades](#pleiades-recover-a-star-cluster-clustering---dbscan-hdbscan) - clustering (DBSCAN, HDBSCAN)
   * [Parameters tuning for DBSCAN](#pleiades---parameters-tuning-for-dbscan)
   * [Compare ML models HDBSCAN vs DBSCAN](#compare-ml-models-hdbscan-vs-dbscan)
-* [Find unusual Gaia stars](#pleiades-recover-a-star-cluster) - anomaly detection (IsolationForrest, LOF)
+* [Find unusual Gaia stars](#pleiades-recover-a-star-cluster) - anomaly detection (IsolationForest, LOF)
   * [Verification using SIMBAD](#verification-using-simbad) 
 * [Visualize stellar populations](#pleiades-from-gaia-using-dimensionality-reduction-pca-umap) - dimensionality reduction (PCA, UMAP)
 * [Classify variable stars](#supervised-learning---classifying-rr-lyrae-eclipsing-binaries-long-period-variables) - classification (logistic regression, random forest, gradient boosting)
 * Classify white dwarfs
-* [Predict stellar temperature](#predicting-stellar-temperature-with-regression) - regression (Linear, Random Forrest, Gradient Boosting)
+* [Predict stellar temperature](#predicting-stellar-temperature-with-regression) - regression (Linear, Random Forest, Gradient Boosting)
 * [Discover an exoplanet using TESS data](#discover-an-exoplanet-using-tess-data) - time-series, astronomy statistical algorithms (Box Least Squares, Lomb–Scargle)
 * [Classify galaxy morphology](#classify-galaxy-morphology) - deep learning (CNN)
 * Detect astronomical transients - time-series, anomaly detection
