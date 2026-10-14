@@ -2,6 +2,21 @@
 
 ![ML algorithm decision map](ml_roadmap.svg)
 
+* [Recover the Pleiades](#pleiades-recover-a-star-cluster-clustering---dbscan-hdbscan) - clustering (DBSCAN, HDBSCAN)
+  * [Parameters tuning for DBSCAN](#pleiades---parameters-tuning-for-dbscan)
+  * [Compare ML models HDBSCAN vs DBSCAN](#compare-ml-models-hdbscan-vs-dbscan)
+* [Find unusual Gaia stars](#pleiades-recover-a-star-cluster) - anomaly detection (IsolationForrest, LOF)
+  * [Verification using SIMBAD](#verification-using-simbad) 
+* [Visualize stellar populations](#pleiades-from-gaia-using-dimensionality-reduction-pca-umap) - dimensionality reduction (PCA, UMAP)
+* [Classify variable stars](#supervised-learning---classifying-rr-lyrae-eclipsing-binaries-long-period-variables) - classification (logistic regression, random forest, gradient boosting)
+* Classify white dwarfs
+* [Predict stellar temperature]() - regression (Linear, Random Forrest, Gradient Boosting)
+* Discover exoplanet transits - time-series, Box Least Squares
+* Classify galaxy morphology - deep learning (CNN)
+* Detect astronomical transients - time-series, anomaly detection
+* [Orion constellation](https://github.com/dancewithheart/astronomy_visual#orion-constellation---data-exploration-and-visualisation) - data exploration and visualization
+* Learning extraction from AI driven experiments
+
 ## Pleiades: recover a star cluster (clustering - DBSCAN, HDBSCAN)
 
 ```sh
@@ -327,6 +342,87 @@ The most important measurement is not brightness itself, but the asymmetry of it
 | Colour + brightness | 0.784 |
 | Variability only | 0.916 |
 | All six features | **0.955** |
+
+## Predicting stellar temperature with regression
+
+Can we estimate a star's surface temperature from its colour and luminosity?
+
+We will compare models:
+
+| Model | What it does | What we learn |
+|---|---|---|
+| Linear Regression | Fits a linear relationship | Baseline regression |
+| Random Forest | Combines many decision trees | Nonlinear regression |
+| Gradient Boosting | Builds trees that progressively correct errors | Improving predictions |
+
+
+and evaluate them using MAE, RMSE, R², and residual plots.
+
+| Metric | What it measures | Interpretation |
+|---|---|---|
+| MAE | Average absolute error | Typical size of a prediction error |
+| RMSE | Root mean squared error | Penalizes large errors more strongly |
+| R² | Improvement over predicting the mean temperature | 1 is perfect; 0 matches the mean baseline |
+
+RMSE is particularly useful for identifying models that occasionally make very large mistakes.
+Residual analysis
+A residual is:
+```
+e(i) = mean(T(i)) - T(i)
+```
+Here, positive residuals mean overestimated temperatures.
+The code generates two diagrams.
+predictions.png compares predicted temperatures against reference temperatures. Perfect predictions lie along the diagonal line.
+residuals.png plots prediction errors against stellar colour.
+
+Data used:
+
+| Variable | Meaning | Role |
+|---|---|---|
+| `bp_rp` | Star's colour | Feature |
+| `absolute_g_mag` | Intrinsic brightness | Feature |
+| `teff_gspspec` | Spectroscopic temperature in Kelvin | Target |
+
+```sh
+python -m experiments.gaia_stellar_temperature --refresh
+python -m experiments.gaia_stellar_temperature
+
+# larger dataset
+python -m experiments.gaia_stellar_temperature --radius 5
+```
+
+![stellar temperature predict](reports/gaia_stellar_temperature/predictions.png)
+
+![random forrest - residuals](reports/gaia_stellar_temperature/residuals.png)
+
+
+```sh
+python -m experiments.gaia_temperature_outliers
+```
+
+
+```txt
+Errors by temperature:
+
+band                count   bias    mae
+(0, 4000]              45  383.8  404.8
+(4000, 4500]          155   26.6  131.9
+(4500, 5000]          379   19.3  144.6
+(5000, 5500]          190  -11.5  229.8
+(5500, 6000]          205  152.8  262.1
+(6000, 6500]          176   -1.0  226.4
+(6500, 7000]          102 -315.1  346.2
+(7000, inf]            33 -611.6  653.2
+```
+
+Observation 1: The model struggles at the extremes.
+Below 4,000 K, MAE is 405 K. Above 7,000 K, it reaches 653 K.
+But, these groups contain only 45 and 33 stars respectively.
+
+Observation 2: The errors are systematic.
+The bias changes direction.
+- Cooler stars: predictions tend to be too hot.
+- Hotter stars: predictions tend to be too cool.
 
 ## Orion constellation - data exploration and visualisation
 
