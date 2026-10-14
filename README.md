@@ -10,8 +10,8 @@
 * [Visualize stellar populations](#pleiades-from-gaia-using-dimensionality-reduction-pca-umap) - dimensionality reduction (PCA, UMAP)
 * [Classify variable stars](#supervised-learning---classifying-rr-lyrae-eclipsing-binaries-long-period-variables) - classification (logistic regression, random forest, gradient boosting)
 * Classify white dwarfs
-* [Predict stellar temperature]() - regression (Linear, Random Forrest, Gradient Boosting)
-* [Discover an exoplanet using TESS data] - time-series, Box Least Squares
+* [Predict stellar temperature](#predicting-stellar-temperature-with-regression) - regression (Linear, Random Forrest, Gradient Boosting)
+* [Discover an exoplanet using TESS data](#discover-an-exoplanet-using-tess-data) - time-series, Box Least Squares
 * Classify galaxy morphology - deep learning (CNN)
 * Detect astronomical transients - time-series, anomaly detection
 * [Orion constellation](https://github.com/dancewithheart/astronomy_visual#orion-constellation---data-exploration-and-visualisation) - data exploration and visualization
@@ -368,7 +368,7 @@ RMSE is particularly useful for identifying models that occasionally make very l
 Residual analysis
 A residual is:
 ```
-e(i) = mean(T(i)) - T(i)
+e(i) = predicted_temperature(i) - reference_temperature(i)
 ```
 Here, positive residuals mean overestimated temperatures.
 The code generates two diagrams.
